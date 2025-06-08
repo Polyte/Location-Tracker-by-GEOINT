@@ -4,7 +4,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
  // main app component
 function App() {
   const mapContainer = useRef(null);
-  const map = useRef(null);
+ 
   const fileInputRef = useRef(null);
   const [locations, setLocations] = useState([]);
   const [newLocation, setNewLocation] = useState({ name: '', category: '', latitude: '', longitude: '' });
@@ -14,12 +14,15 @@ function App() {
   const [addStatus, setAddStatus] = useState('');
   const [addError, setAddError] = useState('');
   const [selectedLocation, setSelectedLocation] = useState(null);
+  const [isGettingLocation, setIsGettingLocation] = useState(false);
   const popupRef = useRef(null);
   const [mapStyle, setMapStyle] = useState('satellite'); // Changed from 'normal' to 'satellite'
+  const MAPTILER_KEY = 'Mzz4D0DNC0EOqwMrDxc6';
+  const map = useRef(null);
 
   const mapStyles = {
     normal: 'https://demotiles.maplibre.org/style.json',
-    satellite: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json'
+    satellite: `https://api.maptiler.com/maps/basic-v2/style.json?key=${MAPTILER_KEY}`
   };
 
   useEffect(() => {
@@ -29,11 +32,25 @@ function App() {
       container: mapContainer.current,
       style: mapStyles[mapStyle],
       center: [28.0473, -26.1072], // Center on Sandton
-      zoom: 13
+      zoom: 15.5,
+      pitch: 45,
+      bearing: -17.6,
+      container: 'map',
+      canvasContextAttributes: {antialias: true}
     });
 
     map.current.on('load', () => {
       fetchLocations();
+      const layers = map.current.getStyle().layers;
+
+      let labelLayerId;
+      for (let i = 0; i < layers.length; i++) {
+          if (layers[i].type === 'symbol' && layers[i].layout['text-field']) {
+              labelLayerId = layers[i].id;
+              break;
+          }
+      }
+    
     });
 
     return () => {
@@ -45,39 +62,63 @@ function App() {
   }, []);
    // toggle map style between normal and satellite view
   const toggleMapStyle = () => {
-    const newStyle = mapStyle === 'normal' ? 'satellite' : 'normal';
-    setMapStyle(newStyle);
+   
     
     // Remove existing source and layer if they exist
-    if (map.current.getSource('locations')) {
-      if (map.current.getLayer('locations')) {
-        map.current.removeLayer('locations');
-      }
-      map.current.removeSource('locations');
-    }
+    const layers = map.current.getStyle().layers;
 
-    // Set the new style
-    map.current.setStyle(mapStyles[newStyle]);
+    let labelLayerId;
+    for (let i = 0; i < layers.length; i++) {
+        if (layers[i].type === 'symbol' && layers[i].layout['text-field']) {
+            labelLayerId = layers[i].id;
+            break;
+        }
+    }
     
     // Re-add the locations layer after style change
     map.current.on('style.load', () => {
       if (locations.length > 0) {
         map.current.addSource('locations', {
-          type: 'geojson',
+          type: 'fill-extrusion',
           data: {
             type: 'FeatureCollection',
             features: locations
           }
         });
 
+        map.current.addSource('openmaptiles', {
+          url: `https://api.maptiler.com/tiles/v3/tiles.json?key=${MAPTILER_KEY}`,
+          type: 'vector',
+      });
+
+      
         map.current.addLayer({
-          id: 'locations',
-          type: 'circle',
-          source: 'locations',
-          paint: {
-            'circle-radius': 6,
-            'circle-color': '#B42222'
-          }
+         'id': '3d-buildings',
+            'source': 'openmaptiles',
+            'source-layer': 'building',
+            'type': 'fill-extrusion',
+            'minzoom': 15,
+            'filter': ['!=', ['get', 'hide_3d'], true],
+            'paint': {
+                'fill-extrusion-color': [
+                    'interpolate',
+                    ['linear'],
+                    ['get', 'render_height'], 6, 'lightgray', 200, 'royalblue', 400, 'lightblue'
+                ],
+                'fill-extrusion-height': [
+                    'interpolate',
+                    ['linear'],
+                    ['zoom'],
+                    15,
+                    0,
+                    16,
+                    ['get', 'render_height']
+                ],
+                'fill-extrusion-base': ['case',
+                    ['>=', ['get', 'zoom'], 16],
+                    ['get', 'render_min_height'], 0
+                ]
+            }
         });
 
         // If there's a selected location, re-add its popup
@@ -299,12 +340,38 @@ function App() {
     });
   }
 
+  // Add new function to get current location
+  const getCurrentLocation = () => {
+    setIsGettingLocation(true);
+    if (!navigator.geolocation) {
+      setAddError('Geolocation is not supported by your browser');
+      setIsGettingLocation(false);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        setNewLocation({
+          ...newLocation,
+          latitude: latitude.toString(),
+          longitude: longitude.toString()
+        });
+        setIsGettingLocation(false);
+      },
+      (error) => {
+        setAddError('Unable to retrieve your location: ' + error.message);
+        setIsGettingLocation(false);
+      }
+    );
+  };
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
-      <h1 className="text-3xl font-bold text-gray-900 mb-6">Location Tracker by Geoint</h1>
+      <h1 className="text-3xl font-bold text-gray-900 mb-6">Location Tracker by <span style={{ color:'#5ba7d2', }}>GEOINT</span></h1>
       
       <div className="relative">
-        <div ref={mapContainer} className="map-container mb-6" style={{ height: '500px' }} />
+        <div ref={mapContainer} className="map-container mb-6" style={{ height: '500px' }} id="map"/>
         <button
           onClick={toggleMapStyle}
           className="absolute top-4 right-4 bg-white px-4 py-2 rounded-md shadow-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -332,20 +399,34 @@ function App() {
                 onChange={(e) => setNewLocation({ ...newLocation, category: e.target.value })}
                 className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
-              <input
-                type="number"
-                placeholder="Latitude"
-                value={newLocation.latitude}
-                onChange={(e) => setNewLocation({ ...newLocation, latitude: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <input
-                type="number"
-                placeholder="Longitude"
-                value={newLocation.longitude}
-                onChange={(e) => setNewLocation({ ...newLocation, longitude: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  placeholder="Latitude"
+                  value={newLocation.latitude}
+                  onChange={(e) => setNewLocation({ ...newLocation, latitude: e.target.value })}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <input
+                  type="number"
+                  placeholder="Longitude"
+                  value={newLocation.longitude}
+                  onChange={(e) => setNewLocation({ ...newLocation, longitude: e.target.value })}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                  type="button"
+                  onClick={getCurrentLocation}
+                  disabled={isGettingLocation}
+                  className={`px-4 py-2 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                    isGettingLocation 
+                      ? 'bg-gray-400 cursor-not-allowed' 
+                      : 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-500'
+                  }`}
+                >
+                  {isGettingLocation ? 'Getting Location...' : '📍'}
+                </button>
+              </div>
               <button 
                 type="submit"
                 className="w-full bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
