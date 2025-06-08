@@ -1,3 +1,6 @@
+![Location](https://github.com/user-attachments/assets/504c41d7-d71c-4fe2-b904-7e4569d1c954)
+
+
 # Location Tracker
 
 A full-stack web application for tracking locations using Docker, PostgreSQL/PostGIS, FastAPI, and React. This application provides a modern interface for managing and visualizing geographical data.
@@ -35,7 +38,7 @@ POSTGRES_PORT=5432
 
 1. Clone the repository:
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/Polyte/Location-Tracker-by-GEOINT
    cd Location-Tracker-by-GEOINT
    ```
 
@@ -49,6 +52,7 @@ POSTGRES_PORT=5432
 4. Access the application:
    - Frontend: http://localhost:3000
    - Backend API: http://localhost:8000
+   - Backend API Locations: http://localhost:8000/locations/geojson
    - API Documentation: http://localhost:8000/docs
 
 ## Development Setup
@@ -59,7 +63,7 @@ cd backend
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn main:app --reload
+uvicorn app.main:app --reload --port 8000
 ```
 
 ### Frontend Development
