@@ -1,10 +1,14 @@
+import os
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import time
-import os
 
-SQLALCHEMY_DATABASE_URL = "postgresql://politemakwala@localhost/location_tracker"
+# Use different database URLs based on environment
+if os.getenv('DOCKER_ENV') == 'true':
+    SQLALCHEMY_DATABASE_URL = "postgresql://postgres:postgres@db:5432/location_tracker"
+else:
+    SQLALCHEMY_DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/location_tracker"
 
 # Add connection retry logic
 def get_engine():
@@ -29,14 +33,19 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
 
-# Create all tables
 def init_db():
-    from . import models  # Import models here to avoid circular imports
+    """Initialize database tables if they don't exist"""
+    # Import models here to avoid circular imports
+    from . import models
     Base.metadata.create_all(bind=engine)
 
+# Initialize database when module is imported
+init_db()
+
 def get_db():
+    """Get database session"""
     db = SessionLocal()
     try:
         yield db
     finally:
-        db.close() 
+        db.close()
